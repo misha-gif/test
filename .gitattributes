@@ -1,2 +1,78 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+from pydoc import html
+
+import requests
+import pytest
+
+
+# URL сервиса
+base_url = "http://91.210.171.73:8080/api/docs/#/Pet%20Categories/category_list"
+
+# Заголовок для авторизации
+headers = {"Authorization": "Basic YWRtaW46YWRtaW4="}  # Авторизация admin:admin
+
+# Тесты для различных эндпоинтов
+def test_get_user_info():
+    url = f"{base_url}/user_info"
+    response = requests.get(url, headers=headers)
+    assert response.status_code == 200
+    assert "user_id" in response.json()
+
+def test_create_user():
+    url = f"{base_url}/create_user"
+    data = {"username": "testuser", "password": "testpassword"}
+    response = requests.post(url, headers=headers, json=data)
+    assert response.status_code == 201
+
+def test_update_user():
+    url = f"{base_url}/update_user"
+    data = {"user_id": 1, "new_username": "new_username"}
+    response = requests.put(url, headers=headers, json=data)
+    assert response.status_code == 200
+    assert response.json()["message"] == "User updated successfully"
+
+# Генерация отчетов с использованием pytest-html
+@pytest.fixture(scope="session")
+def pytest_html_report_title():
+    return "API тесты для тестового сервиса"
+
+@pytest.mark.hookwrapper
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    report.extra = []
+    if report.when == "call":
+        extra = getattr(item.obj, "extra", [])
+        if extra:
+            report.extra.extend(extra)
+
+@pytest.mark.optionalhook
+def pytest_html_results_table_header(cells):
+    cells.insert(2, html.th("Description"))
+    cells.insert(3, html.th("Expected"))
+    cells.insert(4, html.th("Actual"))
+
+@pytest.mark.optionalhook
+def pytest_html_results_table_row(report, cells):
+    if "extra" in report.sections:
+        cells.insert(2, html.td(report.sections["extra"][0]))
+        cells.insert(3, html.td(report.sections["extra"][1]))
+        cells.insert(4, html.td(report.sections["extra"][2]))
+
+# Добавление описаний и ожидаемых результатов для тестов
+@pytest.mark.parametrize(
+    "test_function, description, expected",
+    [
+        (test_get_user_info, "Получение информации о пользователе", "HTTP 200 OK"),
+        (test_create_user, "Создание нового пользователя", "HTTP 201 Created"),
+        (test_update_user, "Обновление информации о пользователе", "HTTP 200 OK"),
+    ],
+    ids=["get_user_info", "create_user", "update_user"]
+)
+def test_with_description_and_expected(request, test_function, description, expected):
+    extra = []
+    outcome = test_function()
+    if outcome:
+        extra.append(description)
+        extra.append(expected)
+        extra.append(outcome)
+    request.node.extra = extra
